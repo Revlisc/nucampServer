@@ -1,11 +1,14 @@
 const express = require('express');
-const Partner = require('../models/partner');
+const partner = require('../models/partner');
 const authenticate = require('../authenticate');
 const partnerRouter = express.Router();
+const cors = require('./cors')
 
 partnerRouter.route('/')
-.get((req, res, next) => {
-    Partner.find()
+.options(cors.corsWithOptions, (req, res) => res.sendStatus(200))
+.get(cors.cors, (req, res, next) => {
+    partner.find()
+    .populate('comments.author')
     .then(partners => {
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');
@@ -13,7 +16,7 @@ partnerRouter.route('/')
     })
     .catch(err => next(err));
 })
-.post(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
+.post(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
     partner.create(req.body)
     .then(partner => {
         console.log('partner Created ', partner);
@@ -23,11 +26,11 @@ partnerRouter.route('/')
     })
     .catch(err => next(err));
 })
-.put((req, res) => {
+.put(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res) => {
     res.statusCode = 403;
     res.end('PUT operation not supported on /partners');
 })
-.delete(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
+.delete(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
     partner.deleteMany()
     .then(response => {
         res.statusCode = 200;
@@ -38,8 +41,9 @@ partnerRouter.route('/')
 });
 
 partnerRouter.route('/:partnerId')
-    .get((req, res, next) => {
-        Partner.findById(req.params.partnerId)
+.options(cors.corsWithOptions, (req, res) => res.sendStatus(200))
+.get(cors.cors, (req, res, next) => {
+        partner.findById(req.params.partnerId)
         .populate('comments.author')
         .then(partner => {
             res.statusCode = 200;
@@ -48,12 +52,12 @@ partnerRouter.route('/:partnerId')
         })
         .catch(err => next(err));
     })
-    .post(authenticate.verifyUser, (req, res) => {
+    .post(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res) => {
         res.statusCode = 403;
         res.end(`POST operation not supported on /partners/${req.params.partnerId}`);
     })
-    .put(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
-        Partner.findByIdAndUpdate(req.params.partnerId, {
+    .put(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
+        partner.findByIdAndUpdate(req.params.partnerId, {
             $set: req.body
         }, { new: true })
             .then(partner => {
@@ -63,36 +67,38 @@ partnerRouter.route('/:partnerId')
             })
             .catch(err => next(err));
     })
-    .delete(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
-        Partner.findByIdAndDelete(req.params.partnerId)
+    .delete(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
+        partner.findByIdAndDelete(req.params.partnerId)
             .then(response => {
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
                 res.json(response);
             })
             .catch(err => next(err));
-});
+    });
 
 partnerRouter.route('/:partnerId/comments')
 .get((req, res, next) => {
-    Partner.findById(req.params.partnerId)
+    partner.findById(req.params.partnerId)
+    .populate('comments.author')
     .then(partner => {
         if (partner) {
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.json(partner.comments);
         } else {
-            err = new Error(`Partner ${req.params.partnerId} not found`);
+            err = new Error(`partner ${req.params.partnerId} not found`);
             err.status = 404;
             return next(err);
         }
     })
     .catch(err => next(err));
 })
-.post((req, res, next) => {
-    Partner.findById(req.params.partnerId)
+.post(authenticate.verifyUser, (req, res, next) => {
+    partner.findById(req.params.partnerId)
     .then(partner => {
         if (partner) {
+            req.body.author = req.user._id;
             partner.comments.push(req.body);
             partner.save()
             .then(partner => {
@@ -102,19 +108,19 @@ partnerRouter.route('/:partnerId/comments')
             })
             .catch(err => next(err));
         } else {
-            err = new Error(`Partner ${req.params.partnerId} not found`);
+            err = new Error(`partner ${req.params.partnerId} not found`);
             err.status = 404;
             return next(err);
         }
     })
     .catch(err => next(err));
 })
-.put((req, res) => {
+.put(authenticate.verifyUser, (req, res, next) => {
     res.statusCode = 403;
     res.end(`PUT operation not supported on /partners/${req.params.partnerId}/comments`);
 })
-.delete((req, res, next) => {
-    Partner.findById(req.params.partnerId)
+.delete(authenticate.verifyUser, authenticate.verifyAdmin, (req, res, next) => {
+    partner.findById(req.params.partnerId)
     .then(partner => {
         if (partner) {
             for (let i = (partner.comments.length-1); i >= 0; i--) {
@@ -137,8 +143,10 @@ partnerRouter.route('/:partnerId/comments')
 });
 
 partnerRouter.route('/:partnerId/comments/:commentId')
-.get((req, res, next) => {
-    Partner.findById(req.params.partnerId)
+.options(cors.corsWithOptions, (req, res) => res.sendStatus(200))
+.get(cors.cors, (req, res, next) => {
+    partner.findById(req.params.partnerId)
+    .populate('comments.author')
     .then(partner => {
         if (partner && partner.comments.id(req.params.commentId)) {
             res.statusCode = 200;
@@ -156,27 +164,34 @@ partnerRouter.route('/:partnerId/comments/:commentId')
     })
     .catch(err => next(err));
 })
-.post((req, res) => {
+.post(cors.corsWithOptions, authenticate.verifyUser, authenticate.verifyAdmin, (req, res) => {
     res.statusCode = 403;
     res.end(`POST operation not supported on /partners/${req.params.partnerId}/comments/${req.params.commentId}`);
 })
-.put((req, res, next) => {
-    Partner.findById(req.params.partnerId)
+.put(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
+    partner.findById(req.params.partnerId)
     .then(partner => {
         if (partner && partner.comments.id(req.params.commentId)) {
-            if (req.body.rating) {
-                partner.comments.id(req.params.commentId).rating = req.body.rating;
+            if(partner.comments.id(req.params.commentId).author._id.equals(req.user_id)) {
+                if (req.body.rating) {
+                    partner.comments.id(req.params.commentId).rating = req.body.rating;
+                }
+                if (req.body.text) {
+                    partner.comments.id(req.params.commentId).text = req.body.text;
+                }
+                partner.save()
+                .then(partner => {
+                    res.statusCode = 200;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.json(partner);
+                })
+                .catch(err => next(err));
+            } else {
+                err = new Error(`You are not authorized to comment`);
+                err.status = 403;
+                return next(err);
             }
-            if (req.body.text) {
-                partner.comments.id(req.params.commentId).text = req.body.text;
-            }
-            partner.save()
-            .then(partner => {
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'application/json');
-                res.json(partner);
-            })
-            .catch(err => next(err));
+            
         } else if (!partner) {
             err = new Error(`partner ${req.params.partnerId} not found`);
             err.status = 404;
@@ -189,18 +204,24 @@ partnerRouter.route('/:partnerId/comments/:commentId')
     })
     .catch(err => next(err));
 })
-.delete((req, res, next) => {
-    Partner.findById(req.params.partnerId)
+.delete(cors.corsWithOptions, authenticate.verifyUser, (req, res, next) => {
+    partner.findById(req.params.partnerId)
     .then(partner => {
         if (partner && partner.comments.id(req.params.commentId)) {
-            partner.comments.id(req.params.commentId).remove();
-            partner.save()
-            .then(partner => {
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'application/json');
-                res.json(partner);
-            })
-            .catch(err => next(err));
+            if(partner.comments.id(req.params.commentId).author._id.equals(req.user_id)) {
+                partner.comments.id(req.params.commentId).remove();
+                partner.save()
+                .then(partner => {
+                    res.statusCode = 200;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.json(partner);
+                })
+                .catch(err => next(err));
+            } else {
+                err = new Error(`You are not authorized to delete`);
+                err.status = 403;
+                return next(err);
+            }
         } else if (!partner) {
             err = new Error(`partner ${req.params.partnerId} not found`);
             err.status = 404;
